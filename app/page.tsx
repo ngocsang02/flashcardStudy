@@ -135,13 +135,13 @@ export default function HomePage() {
       />
 
       <div className="card-shell p-4">
-        <label className="mb-2 block text-sm font-medium text-slate-700">Folder (optional)</label>
+        <label className="mb-2 block text-sm font-medium text-slate-700">Folder</label>
         <select
           value={folderId}
           onChange={(e) => setFolderId(e.target.value)}
           className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none ring-blue-500 transition focus:ring-2"
         >
-          <option value="">No folder</option>
+          <option value="">Select folder</option>
           {folders.map((folder) => (
             <option key={folder.id} value={folder.id}>
               {folder.name}
@@ -152,25 +152,25 @@ export default function HomePage() {
 
       <button
         type="button"
-        disabled={submitting || !word || !selectedImage || !dictionary}
+        disabled={submitting || !word || !folderId}
         onClick={async () => {
-          if (!dictionary || !selectedImage || !word) {
-            toast.error("Please search word and choose image first");
+          if (!word || !folderId) {
+            toast.error("Please enter a word and choose folder");
             return;
           }
 
           setSubmitting(true);
           const result = await createFlashcard({
             word,
-            image: selectedImage,
-            phonetic: dictionary.phonetic,
-            vietnameseMeaning,
-            partOfSpeech: dictionary.partOfSpeech,
-            definition: dictionary.definition,
-            example: dictionary.example,
+            image: selectedImage || "",
+            phonetic: dictionary?.phonetic || "",
+            vietnameseMeaning: vietnameseMeaning || "",
+            partOfSpeech: dictionary?.partOfSpeech || "",
+            definition: dictionary?.definition || "",
+            example: dictionary?.example || "",
             exampleVietnamese,
             isFavorite: false,
-            folderId: folderId || null
+            folderId
           });
 
           if (!result.ok) {

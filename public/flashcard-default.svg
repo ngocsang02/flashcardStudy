@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-label="Default flashcard image">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e2e8f0" />
+      <stop offset="100%" stop-color="#cbd5e1" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#g)" />
+  <g fill="#475569" font-family="Arial, Helvetica, sans-serif" text-anchor="middle">
+    <text x="600" y="360" font-size="72" font-weight="700">No Image</text>
+    <text x="600" y="430" font-size="36">Default flashcard placeholder</text>
+  </g>
+</svg>

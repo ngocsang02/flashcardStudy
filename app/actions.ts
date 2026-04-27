@@ -4,11 +4,20 @@ import { revalidatePath } from "next/cache";
 import { supabase } from "@/lib/supabase";
 import type { Flashcard, FlashcardInsert, Folder } from "@/lib/types";
 
+const DEFAULT_FLASHCARD_IMAGE = "/flashcard-default.svg";
+
+function normalizeImageSrc(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return DEFAULT_FLASHCARD_IMAGE;
+  if (raw.includes("placehold.co")) return DEFAULT_FLASHCARD_IMAGE;
+  return raw;
+}
+
 function mapRowToFlashcard(row: Record<string, unknown>): Flashcard {
   return {
     id: String(row.id),
     word: String(row.word ?? ""),
-    image: String(row.image ?? ""),
+    image: normalizeImageSrc(row.image),
     phonetic: String(row.phonetic ?? ""),
     vietnameseMeaning: String(row.vietnamese_meaning ?? ""),
     partOfSpeech: String(row.part_of_speech ?? ""),
@@ -312,6 +321,7 @@ export async function deleteFolder(folderId: string): Promise<{ ok: boolean; err
 export async function createFlashcard(input: FlashcardInsert): Promise<{ ok: boolean; error?: string }> {
   const normalizedWord = input.word.trim().toLowerCase();
   if (!normalizedWord) return { ok: false, error: "Word is required" };
+  if (!input.folderId) return { ok: false, error: "Folder is required" };
 
   const { data: duplicated, error: duplicateError } = await supabase
     .from("flashcards")
@@ -326,14 +336,14 @@ export async function createFlashcard(input: FlashcardInsert): Promise<{ ok: boo
 
   const { error } = await supabase.from("flashcards").insert({
     word: normalizedWord,
-    image: input.image,
-    phonetic: input.phonetic,
-    vietnamese_meaning: input.vietnameseMeaning,
-    part_of_speech: input.partOfSpeech,
-    definition: input.definition,
-    example: input.example,
+    image: input.image?.trim() || DEFAULT_FLASHCARD_IMAGE,
+    phonetic: input.phonetic?.trim() || "",
+    vietnamese_meaning: input.vietnameseMeaning?.trim() || normalizedWord,
+    part_of_speech: input.partOfSpeech?.trim() || "",
+    definition: input.definition?.trim() || "",
+    example: input.example?.trim() || "",
     example_vietnamese: input.exampleVietnamese ?? "",
-    is_favorite: input.isFavorite,
+    is_favorite: input.isFavorite ?? false,
     folder_id: input.folderId
   });
 

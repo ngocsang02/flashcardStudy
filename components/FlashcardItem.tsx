@@ -16,6 +16,7 @@ type Props = {
 export function FlashcardItem({ card, folders, onDelete, onUpdate, onToggleFavorite }: Props) {
   const [flipped, setFlipped] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     word: card.word,
     vietnameseMeaning: card.vietnameseMeaning,
@@ -59,63 +60,130 @@ export function FlashcardItem({ card, folders, onDelete, onUpdate, onToggleFavor
           </div>
 
           <div className="flashcard-face flashcard-back card-shell p-4">
-            {!editing ? (
-              <div className="space-y-2 text-sm text-slate-700">
-                <p><span className="font-semibold">Vietnamese:</span> {card.vietnameseMeaning || "N/A"}</p>
-                <p><span className="font-semibold">Phonetic:</span> {card.phonetic || "N/A"}</p>
-                <p><span className="font-semibold">Type:</span> {card.partOfSpeech || "N/A"}</p>
-                <p><span className="font-semibold">Definition:</span> {card.definition || "N/A"}</p>
-                <p><span className="font-semibold">Example:</span> {card.example || "N/A"}</p>
-                <p><span className="font-semibold">Example (VI):</span> {card.exampleVietnamese || "N/A"}</p>
-                <div className="flex gap-2 pt-2">
-                  <button type="button" onClick={() => setFlipped(false)} className="rounded-lg bg-slate-100 px-3 py-2">
-                    Flip Back
-                  </button>
-                  <button type="button" onClick={() => setEditing(true)} className="rounded-lg bg-blue-100 px-3 py-2 text-blue-700">
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const result = await onDelete(card.id);
-                      if (!result.ok) toast.error(result.error || "Delete failed");
-                      else toast.success("Deleted flashcard");
-                    }}
-                    className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
-                  >
-                    Delete
-                  </button>
-                </div>
+            <div className="space-y-2 text-sm text-slate-700">
+              <p><span className="font-semibold">Vietnamese:</span> {card.vietnameseMeaning || "N/A"}</p>
+              <p><span className="font-semibold">Phonetic:</span> {card.phonetic || "N/A"}</p>
+              <p><span className="font-semibold">Type:</span> {card.partOfSpeech || "N/A"}</p>
+              <p><span className="font-semibold">Definition:</span> {card.definition || "N/A"}</p>
+              <p><span className="font-semibold">Example:</span> {card.example || "N/A"}</p>
+              <p><span className="font-semibold">Example (VI):</span> {card.exampleVietnamese || "N/A"}</p>
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setFlipped(false)} className="rounded-lg bg-slate-100 px-3 py-2">
+                  Flip Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForm({
+                      word: card.word,
+                      vietnameseMeaning: card.vietnameseMeaning,
+                      phonetic: card.phonetic,
+                      partOfSpeech: card.partOfSpeech,
+                      definition: card.definition,
+                      example: card.example,
+                      exampleVietnamese: card.exampleVietnamese ?? "",
+                      folderId: card.folderId ?? ""
+                    });
+                    setEditing(true);
+                  }}
+                  className="rounded-lg bg-blue-100 px-3 py-2 text-blue-700"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const result = await onDelete(card.id);
+                    if (!result.ok) toast.error(result.error || "Delete failed");
+                    else toast.success("Deleted flashcard");
+                  }}
+                  className="rounded-lg bg-red-100 px-3 py-2 text-red-700"
+                >
+                  Delete
+                </button>
               </div>
-            ) : (
-              <form
-                className="space-y-2"
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  const result = await onUpdate(card.id, {
-                    ...form,
-                    folderId: form.folderId || null
-                  });
-                  if (!result.ok) toast.error(result.error || "Update failed");
-                  else {
-                    toast.success("Updated flashcard");
-                    setEditing(false);
-                  }
-                }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close edit dialog"
+            onClick={() => !saving && setEditing(false)}
+            className="absolute inset-0 bg-slate-900/50"
+          />
+          <div className="relative z-10 w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl sm:p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">Edit Flashcard</h3>
+              <button
+                type="button"
+                onClick={() => !saving && setEditing(false)}
+                className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700"
               >
-                <input className="w-full rounded border px-2 py-1" value={form.word} onChange={(e) => setForm({ ...form, word: e.target.value })} />
-                <input className="w-full rounded border px-2 py-1" value={form.vietnameseMeaning} onChange={(e) => setForm({ ...form, vietnameseMeaning: e.target.value })} />
-                <input className="w-full rounded border px-2 py-1" value={form.phonetic} onChange={(e) => setForm({ ...form, phonetic: e.target.value })} />
-                <input className="w-full rounded border px-2 py-1" value={form.partOfSpeech} onChange={(e) => setForm({ ...form, partOfSpeech: e.target.value })} />
-                <textarea className="w-full rounded border px-2 py-1" value={form.definition} onChange={(e) => setForm({ ...form, definition: e.target.value })} />
-                <textarea className="w-full rounded border px-2 py-1" value={form.example} onChange={(e) => setForm({ ...form, example: e.target.value })} />
+                Close
+              </button>
+            </div>
+
+            <form
+              className="space-y-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setSaving(true);
+                const result = await onUpdate(card.id, {
+                  ...form,
+                  folderId: form.folderId || null
+                });
+                setSaving(false);
+                if (!result.ok) toast.error(result.error || "Update failed");
+                else {
+                  toast.success("Updated flashcard");
+                  setEditing(false);
+                }
+              }}
+            >
+              <label className="block text-sm font-medium text-slate-700">
+                Word
+                <input className="mt-1 w-full rounded border px-3 py-2" value={form.word} onChange={(e) => setForm({ ...form, word: e.target.value })} />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Vietnamese meaning
+                <input
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={form.vietnameseMeaning}
+                  onChange={(e) => setForm({ ...form, vietnameseMeaning: e.target.value })}
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Phonetic
+                <input className="mt-1 w-full rounded border px-3 py-2" value={form.phonetic} onChange={(e) => setForm({ ...form, phonetic: e.target.value })} />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Part of speech
+                <input className="mt-1 w-full rounded border px-3 py-2" value={form.partOfSpeech} onChange={(e) => setForm({ ...form, partOfSpeech: e.target.value })} />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Definition
+                <textarea className="mt-1 w-full rounded border px-3 py-2" value={form.definition} onChange={(e) => setForm({ ...form, definition: e.target.value })} />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Example
+                <textarea className="mt-1 w-full rounded border px-3 py-2" value={form.example} onChange={(e) => setForm({ ...form, example: e.target.value })} />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Example (Vietnamese)
                 <textarea
-                  className="w-full rounded border px-2 py-1"
+                  className="mt-1 w-full rounded border px-3 py-2"
                   value={form.exampleVietnamese}
                   onChange={(e) => setForm({ ...form, exampleVietnamese: e.target.value })}
                 />
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Folder
                 <select
-                  className="w-full rounded border px-2 py-1"
+                  className="mt-1 w-full rounded border px-3 py-2"
                   value={form.folderId}
                   onChange={(e) => setForm({ ...form, folderId: e.target.value })}
                 >
@@ -126,15 +194,19 @@ export function FlashcardItem({ card, folders, onDelete, onUpdate, onToggleFavor
                     </option>
                   ))}
                 </select>
-                <div className="flex gap-2">
-                  <button type="submit" className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">Save</button>
-                  <button type="button" onClick={() => setEditing(false)} className="rounded-lg bg-slate-100 px-3 py-2 text-sm">Cancel</button>
-                </div>
-              </form>
-            )}
+              </label>
+              <div className="flex gap-2 pt-2">
+                <button type="submit" disabled={saving} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                  {saving ? "Saving..." : "Save"}
+                </button>
+                <button type="button" disabled={saving} onClick={() => setEditing(false)} className="rounded-lg bg-slate-100 px-3 py-2 text-sm">
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
