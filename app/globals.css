@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+.page-gradient {
+  background: radial-gradient(circle at top, #dbeafe 0%, #f8fafc 35%, #f8fafc 100%);
+}
+
+.card-shell {
+  @apply rounded-2xl border border-slate-200 bg-white/90 shadow-soft backdrop-blur;
+}
