@@ -33,6 +33,74 @@ function mapRowToFolder(row: Record<string, unknown>): Folder {
   };
 }
 
+function escapeCsvValue(value: string): string {
+  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function parseCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+
+    if (char === '"' && inQuotes && nextChar === '"') {
+      current += '"';
+      i += 1;
+      continue;
+    }
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+
+  cells.push(current.trim());
+  return cells;
+}
+
+function splitCsvRows(content: string): string[] {
+  const rows: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < content.length; i += 1) {
+    const char = content[i];
+    const nextChar = content[i + 1];
+
+    if (char === '"' && inQuotes && nextChar === '"') {
+      current += '"';
+      i += 1;
+      continue;
+    }
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      current += char;
+      continue;
+    }
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (current.trim()) rows.push(current);
+      current = "";
+      if (char === "\r" && nextChar === "\n") i += 1;
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) rows.push(current);
+  return rows;
+}
+
 export async function listFlashcards(): Promise<Flashcard[]> {
   const { data, error } = await supabase.from("flashcards").select("*").order("created_at", { ascending: false });
 
@@ -49,6 +117,136 @@ export async function listFlashcardsByFolder(folderId: string): Promise<Flashcar
 
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => mapRowToFlashcard(row));
+}
+
+export async function exportFolderToCsv(
+  folderId: string,
+  folderNameFallback?: string
+): Promise<{ ok: boolean; filename?: string; csv?: string; error?: string }> {
+  const cards = await listFlashcardsByFolder(folderId);
+  const header = [
+    "word",
+    "image",
+    "phonetic",
+    "vietnameseMeaning",
+    "partOfSpeech",
+    "definition",
+    "example",
+    "exampleVietnamese",
+    "isFavorite"
+  ].join(",");
+
+  const rows = cards.map((card) =>
+    [
+      card.word,
+      card.image,
+      card.phonetic,
+      card.vietnameseMeaning,
+      card.partOfSpeech,
+      card.definition,
+      card.example,
+      card.exampleVietnamese ?? "",
+      card.isFavorite ? "true" : "false"
+    ]
+      .map((value) => escapeCsvValue(value))
+      .join(",")
+  );
+
+  const rawName = (folderNameFallback ?? folderId).trim();
+  const safeName = rawName.replace(/[^\w-]+/g, "_").toLowerCase();
+  return {
+    ok: true,
+    filename: `folder_${safeName || folderId}.csv`,
+    csv: [header, ...rows].join("\n")
+  };
+}
+
+export async function importFlashcardsFromCsv(
+  folderId: string,
+  csvText: string
+): Promise<{ ok: boolean; imported?: number; skipped?: number; errorLines?: string[]; error?: string }> {
+  if (!csvText.trim()) return { ok: false, error: "CSV content is empty" };
+
+  const rows = splitCsvRows(csvText);
+  if (rows.length < 2) return { ok: false, error: "CSV must include header and at least one data row" };
+
+  const header = parseCsvLine(rows[0]).map((item) => item.toLowerCase());
+  const required = ["word"];
+  const missing = required.filter((key) => !header.includes(key));
+  if (missing.length > 0) return { ok: false, error: `Missing required column(s): ${missing.join(", ")}` };
+
+  const indexOf = (name: string) => header.indexOf(name.toLowerCase());
+  const rowErrors: string[] = [];
+  const pendingRows: Array<Record<string, unknown>> = [];
+  let skipped = 0;
+
+  for (let i = 1; i < rows.length; i += 1) {
+    const cells = parseCsvLine(rows[i]);
+    const get = (name: string) => {
+      const idx = indexOf(name);
+      return idx >= 0 ? String(cells[idx] ?? "").trim() : "";
+    };
+
+    const word = get("word").toLowerCase();
+    if (!word) {
+      rowErrors.push(`Line ${i + 1}: word is required`);
+      continue;
+    }
+
+    pendingRows.push({
+      word,
+      image: get("image"),
+      phonetic: get("phonetic"),
+      vietnamese_meaning: get("vietnameseMeaning"),
+      part_of_speech: get("partOfSpeech"),
+      definition: get("definition"),
+      example: get("example"),
+      example_vietnamese: get("exampleVietnamese"),
+      is_favorite: get("isFavorite").toLowerCase() === "true",
+      folder_id: folderId
+    });
+  }
+
+  if (pendingRows.length === 0) {
+    return { ok: false, error: "No valid rows to import", errorLines: rowErrors };
+  }
+
+  const words = pendingRows.map((item) => String(item.word));
+  const { data: existingRows, error: existingError } = await supabase
+    .from("flashcards")
+    .select("word")
+    .in("word", words);
+
+  if (existingError) return { ok: false, error: existingError.message };
+  const existingWords = new Set((existingRows ?? []).map((item) => String(item.word).toLowerCase()));
+
+  const insertRows = pendingRows.filter((item) => {
+    const word = String(item.word);
+    if (existingWords.has(word)) {
+      skipped += 1;
+      return false;
+    }
+    existingWords.add(word);
+    return true;
+  });
+
+  if (insertRows.length > 0) {
+    const { error: insertError } = await supabase.from("flashcards").insert(insertRows);
+    if (insertError) return { ok: false, error: insertError.message };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/flashcards");
+  revalidatePath("/study");
+  revalidatePath("/folders");
+  revalidatePath(`/study/${folderId}`);
+
+  return {
+    ok: true,
+    imported: insertRows.length,
+    skipped,
+    errorLines: rowErrors
+  };
 }
 
 export async function listFolders(): Promise<Folder[]> {

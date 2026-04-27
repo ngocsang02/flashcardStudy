@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRef } from "react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { createFolder, deleteFolder, listFolders, updateFolder } from "@/app/actions";
+import { createFolder, deleteFolder, exportFolderToCsv, importFlashcardsFromCsv, listFolders, updateFolder } from "@/app/actions";
 import type { Folder } from "@/lib/types";
 
 type Props = {
@@ -16,6 +17,8 @@ export function FolderManager({ initialFolders }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [transferLoadingId, setTransferLoadingId] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const sortedFolders = useMemo(
     () => [...folders].sort((a, b) => (b.wordCount ?? 0) - (a.wordCount ?? 0) || a.name.localeCompare(b.name)),
@@ -73,6 +76,51 @@ export function FolderManager({ initialFolders }: Props) {
 
     setFolders(await listFolders());
     toast.success("Folder deleted");
+  };
+
+  const downloadCsv = async (folderId: string, folderName: string) => {
+    setTransferLoadingId(folderId);
+    const result = await exportFolderToCsv(folderId, folderName);
+    setTransferLoadingId(null);
+    if (!result.ok || !result.csv) {
+      toast.error(result.error || "Cannot export CSV");
+      return;
+    }
+
+    const blob = new Blob([result.csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = result.filename || `${folderName}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("CSV exported");
+  };
+
+  const importCsv = async (folderId: string, file: File) => {
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      toast.error("Please select a .csv file");
+      return;
+    }
+
+    setTransferLoadingId(folderId);
+    const text = await file.text();
+    const result = await importFlashcardsFromCsv(folderId, text);
+    setTransferLoadingId(null);
+
+    if (!result.ok) {
+      toast.error(result.error || "Cannot import CSV");
+      return;
+    }
+
+    setFolders(await listFolders());
+    const imported = result.imported ?? 0;
+    const skipped = result.skipped ?? 0;
+    const errors = result.errorLines?.length ?? 0;
+    toast.success(`Imported ${imported} row(s). Skipped ${skipped}. ${errors > 0 ? `${errors} line error(s).` : ""}`);
+    if (errors > 0) {
+      toast.warning(`CSV has ${errors} invalid line(s).`);
+    }
   };
 
   return (
@@ -157,6 +205,36 @@ export function FolderManager({ initialFolders }: Props) {
                   >
                     Rename
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => void downloadCsv(folder.id, folder.name)}
+                    disabled={transferLoadingId === folder.id}
+                    className="rounded-lg bg-indigo-100 px-3 py-2 text-xs font-semibold text-indigo-700 disabled:opacity-60"
+                  >
+                    {transferLoadingId === folder.id ? "Working..." : "Export CSV"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRefs.current[folder.id]?.click()}
+                    disabled={transferLoadingId === folder.id}
+                    className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-700 disabled:opacity-60"
+                  >
+                    Import CSV
+                  </button>
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    ref={(el) => {
+                      fileInputRefs.current[folder.id] = el;
+                    }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.currentTarget.value = "";
+                      if (!file) return;
+                      void importCsv(folder.id, file);
+                    }}
+                    className="hidden"
+                  />
                   <button
                     type="button"
                     onClick={() => void removeFolder(folder.id)}
