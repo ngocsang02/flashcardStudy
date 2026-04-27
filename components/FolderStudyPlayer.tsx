@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { fetchPronunciationAudio } from "@/lib/api";
 import type { Flashcard } from "@/lib/types";
@@ -83,6 +83,8 @@ export function FolderStudyPlayer({ folderName, cards }: Props) {
   const [reviewOnlyIncorrect, setReviewOnlyIncorrect] = useState(false);
   const [highScore, setHighScore] = useState(0);
   const [currentTimeMs, setCurrentTimeMs] = useState(Date.now());
+  const [quizPlayingAudio, setQuizPlayingAudio] = useState(false);
+  const playedQuizAudioRef = useRef<Set<string>>(new Set());
 
   const total = deck.length;
   const current = deck[index];
@@ -120,6 +122,8 @@ export function FolderStudyPlayer({ folderName, cards }: Props) {
     setQuizCompletedAt(null);
     setShowReview(false);
     setReviewOnlyIncorrect(false);
+    setQuizPlayingAudio(false);
+    playedQuizAudioRef.current = new Set();
   }, [cards]);
 
   useEffect(() => {
@@ -147,6 +151,7 @@ export function FolderStudyPlayer({ folderName, cards }: Props) {
     setQuizCompletedAt(null);
     setShowReview(false);
     setReviewOnlyIncorrect(false);
+    playedQuizAudioRef.current = new Set();
   };
 
   const answerQuiz = useCallback((option: QuizOption) => {
@@ -184,6 +189,34 @@ export function FolderStudyPlayer({ folderName, cards }: Props) {
     setSelectedOptionId("");
   };
 
+  const playAudioForWord = useCallback(
+    async (word: string, options?: { silentNoAudio?: boolean; silentError?: boolean }) => {
+      try {
+        setQuizPlayingAudio(true);
+        let audioUrl = audioMap[word];
+        if (!audioUrl) {
+          audioUrl = await fetchPronunciationAudio(word);
+          if (audioUrl) {
+            setAudioMap((prev) => ({ ...prev, [word]: audioUrl }));
+          }
+        }
+
+        if (!audioUrl) {
+          if (!options?.silentNoAudio) toast.error("No pronunciation audio found for this word");
+          return;
+        }
+
+        const audio = new Audio(audioUrl);
+        await audio.play();
+      } catch {
+        if (!options?.silentError) toast.error("Cannot play pronunciation audio");
+      } finally {
+        setQuizPlayingAudio(false);
+      }
+    },
+    [audioMap]
+  );
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (mode === "flashcard") {
@@ -211,6 +244,14 @@ export function FolderStudyPlayer({ folderName, cards }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [mode, total, quizCurrent, quizAnswered, quizCompletedAt, answerQuiz]);
+
+  useEffect(() => {
+    if (mode !== "quiz" || !quizCurrent || quizCompletedAt || showReview) return;
+    if (playedQuizAudioRef.current.has(quizCurrent.id)) return;
+
+    playedQuizAudioRef.current.add(quizCurrent.id);
+    void playAudioForWord(quizCurrent.word, { silentNoAudio: true, silentError: true });
+  }, [mode, playAudioForWord, quizCompletedAt, quizCurrent, showReview]);
 
   if (total === 0) {
     return (
@@ -431,7 +472,22 @@ export function FolderStudyPlayer({ folderName, cards }: Props) {
 
           <div className="card-shell p-6">
             <p className="text-sm uppercase tracking-wide text-slate-500">Pick the Vietnamese meaning</p>
-            <h2 className="mt-2 text-4xl font-extrabold text-slate-900">{quizCurrent?.word}</h2>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <h2 className="text-4xl font-extrabold text-slate-900">{quizCurrent?.word}</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!quizCurrent) return;
+                  void playAudioForWord(quizCurrent.word);
+                }}
+                disabled={quizPlayingAudio}
+                className="rounded-full bg-emerald-100 px-3 py-2 text-sm font-semibold text-emerald-700 disabled:opacity-60"
+                aria-label="Play word pronunciation"
+                title="Play pronunciation"
+              >
+                {quizPlayingAudio ? "Playing..." : "🔊"}
+              </button>
+            </div>
             <p className="mt-2 text-sm text-slate-500">Tip: use keyboard 1, 2, 3, 4.</p>
             <div className="mt-5 grid gap-3">
               {quizCurrent?.options.map((option, optionIndex) => {
