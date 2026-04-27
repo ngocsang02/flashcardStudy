@@ -177,6 +177,7 @@ export default function HomePage() {
             toast.error(result.error || "Cannot create flashcard");
           } else {
             toast.success("Flashcard created");
+            setWord("");
           }
           setSubmitting(false);
         }}
